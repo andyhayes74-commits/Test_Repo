@@ -1,149 +1,37 @@
 const { chromium } = require('playwright');
 const fs = require('fs/promises');
 
-const pages = [
-  { name: 'home', url: 'https://hayfam.co.uk/' },
-  { name: 'books', url: 'https://hayfam.co.uk/books/' },
-  { name: 'society', url: 'https://hayfam.co.uk/the-society-of-temporal-studies/' },
-  { name: 'better-world', url: 'https://hayfam.co.uk/the-better-world-series/' },
-  { name: 'about', url: 'https://hayfam.co.uk/about-hayfam-books/' },
-  { name: 'readers', url: 'https://hayfam.co.uk/join-the-readers-list/' },
-  { name: 'signup', url: 'https://hayfam.co.uk/signup/' },
-  { name: 'contact', url: 'https://hayfam.co.uk/contact-hayfam-books/' },
-  { name: 'privacy', url: 'https://hayfam.co.uk/privacy-notice/' }
-];
-const viewports = [
-  { name: 'desktop', width: 1440, height: 1000, mobile: false },
-  { name: 'mobile', width: 412, height: 915, mobile: true }
+const products = [
+  { name: 'The War Tax', url: 'https://amzn.eu/d/06BRn0He' },
+  { name: 'The Better World Protocol', url: 'https://amzn.eu/d/0aRNtQsD' },
+  { name: 'The Backup Protocol', url: 'https://amzn.eu/d/00ukRqTf' }
 ];
 
-async function loadWholePage(page) {
-  await page.evaluate(async () => {
-    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-    document.documentElement.style.scrollBehavior = 'auto';
-    const step = Math.max(320, Math.floor(innerHeight * .72));
-    for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
-      window.scrollTo(0, y);
-      await delay(90);
-    }
-    window.scrollTo(0, document.documentElement.scrollHeight);
-    await delay(400);
-    window.scrollTo(0, 0);
-    await delay(500);
-  });
-}
-
-async function capture() {
+(async () => {
   await fs.rm('screenshots', { recursive: true, force: true });
   await fs.mkdir('screenshots', { recursive: true });
   const browser = await chromium.launch({ headless: true });
-  const audit = [];
-  try {
-    for (const viewport of viewports) {
-      const context = await browser.newContext({
-        viewport: { width: viewport.width, height: viewport.height },
-        deviceScaleFactor: 1,
-        isMobile: viewport.mobile,
-        hasTouch: viewport.mobile,
-        userAgent: viewport.mobile ? 'Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 Chrome/138.0.0.0 Mobile Safari/537.36' : undefined
-      });
-      for (const target of pages) {
-        const page = await context.newPage();
-        const consoleErrors = [];
-        page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
-        page.on('pageerror', e => consoleErrors.push(e.message));
-        try {
-          await page.goto(`${target.url}?production-audit=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
-          await page.waitForTimeout(3500);
-          await page.evaluate(async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; });
-          await loadWholePage(page);
-          const result = await page.evaluate(() => {
-            const visible = el => {
-              const s = getComputedStyle(el), r = el.getBoundingClientRect();
-              return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity || 1) > 0 && r.width > 0 && r.height > 0;
-            };
-            const links = [...document.querySelectorAll('a[href]')].map(a => {
-              const r = a.getBoundingClientRect();
-              return {
-                text: a.textContent.replace(/\s+/g, ' ').trim(),
-                href: a.href,
-                rawHref: a.getAttribute('href'),
-                visible: visible(a),
-                aboveFold: visible(a) && r.top >= 0 && r.top < innerHeight,
-                inNav: !!a.closest('nav'),
-                inFooter: !!a.closest('footer'),
-                target: a.target || null,
-                ariaLabel: a.getAttribute('aria-label')
-              };
-            });
-            const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(h => ({ level: Number(h.tagName[1]), text: h.textContent.replace(/\s+/g, ' ').trim(), visible: visible(h) }));
-            const overflow = [...document.querySelectorAll('body *')].filter(visible).map(el => {
-              const r = el.getBoundingClientRect();
-              return { tag: el.tagName.toLowerCase(), className: typeof el.className === 'string' ? el.className : '', left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width) };
-            }).filter(x => x.left < -2 || x.right > innerWidth + 2).slice(0, 25);
-            const emptyParagraphs = [...document.querySelectorAll('p')].filter(p => !p.textContent.trim() && !p.querySelector('img,iframe,input,button')).length;
-            const strayBreaks = [...document.querySelectorAll('br')].filter(br => {
-              const parent = br.parentElement;
-              const prev = br.previousElementSibling;
-              const next = br.nextElementSibling;
-              return parent && (parent.matches('main,header,footer,section,nav,article,aside,div') || (prev && prev.matches('main,header,footer,section,nav,article,aside,div')) || (next && next.matches('main,header,footer,section,nav,article,aside,div')));
-            }).length;
-            const hiddenThemeNodes = [...document.querySelectorAll('#masthead,#colophon,.site-header,.site-footer')].map(el => ({ tag: el.tagName.toLowerCase(), id: el.id, className: typeof el.className === 'string' ? el.className : '', visible: visible(el), ariaHidden: el.getAttribute('aria-hidden'), linkCount: el.querySelectorAll('a').length }));
-            const ctas = links.filter(l => /pre-order|preorder|buy on amazon|join newsletter|join the newsletter|join arc|arc team|read an excerpt|sample chapter/i.test(l.text));
-            return {
-              title: document.title,
-              htmlLang: document.documentElement.lang,
-              metaDescription: document.querySelector('meta[name="description"]')?.content || null,
-              canonical: document.querySelector('link[rel="canonical"]')?.href || null,
-              og: {
-                title: document.querySelector('meta[property="og:title"]')?.content || null,
-                description: document.querySelector('meta[property="og:description"]')?.content || null,
-                image: document.querySelector('meta[property="og:image"]')?.content || null,
-                type: document.querySelector('meta[property="og:type"]')?.content || null
-              },
-              mainCount: document.querySelectorAll('main').length,
-              nestedMainCount: document.querySelectorAll('main main').length,
-              bodyMainDirect: document.querySelector('main') ? document.querySelector('main').parentElement === document.body : false,
-              headerCount: document.querySelectorAll('header').length,
-              footerCount: document.querySelectorAll('footer').length,
-              navCount: document.querySelectorAll('nav').length,
-              h1Count: document.querySelectorAll('h1').length,
-              headings,
-              links,
-              ctas,
-              emptyParagraphs,
-              strayBreaks,
-              hiddenThemeNodes,
-              missingAlt: [...document.images].filter(img => !img.hasAttribute('alt')).map(img => img.currentSrc || img.src),
-              emptyAlt: [...document.images].filter(img => img.getAttribute('alt') === '' && !img.closest('[aria-hidden="true"]')).map(img => img.currentSrc || img.src),
-              forms: [...document.querySelectorAll('form')].map(f => ({ id: f.id, action: f.action, ariaLabel: f.getAttribute('aria-label'), visible: visible(f) })),
-              ids: [...document.querySelectorAll('[id]')].map(el => el.id),
-              overflow,
-              scrollWidth: document.documentElement.scrollWidth,
-              clientWidth: document.documentElement.clientWidth
-            };
-          });
-          audit.push({ page: target.name, viewport: viewport.name, ...result, consoleErrors });
-          await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-top.png`, fullPage: false });
-          await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-full.png`, fullPage: true });
-        } catch (error) {
-          audit.push({ page: target.name, viewport: viewport.name, fatalError: error.message, consoleErrors });
-        } finally {
-          await page.close();
-        }
-      }
-      await context.close();
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/138.0.0.0 Safari/537.36'
+  });
+  const results = [];
+  for (const product of products) {
+    const page = await context.newPage();
+    try {
+      await page.goto(product.url, { waitUntil: 'domcontentloaded', timeout: 90000 });
+      await page.waitForTimeout(2500);
+      results.push({ name: product.name, shortUrl: product.url, finalUrl: page.url(), title: await page.title() });
+    } catch (error) {
+      results.push({ name: product.name, shortUrl: product.url, finalUrl: page.url(), error: error.message });
+    } finally {
+      await page.close();
     }
-  } catch (error) {
-    audit.push({ auditFatalError: error.message, stack: error.stack });
-  } finally {
-    await fs.writeFile('screenshots/site-audit.json', JSON.stringify({ pages: audit }, null, 2));
-    await browser.close();
   }
-}
-
-capture().catch(async error => {
+  await fs.writeFile('screenshots/amazon-links.json', JSON.stringify(results, null, 2));
+  await browser.close();
+})().catch(async error => {
   await fs.mkdir('screenshots', { recursive: true });
-  await fs.writeFile('screenshots/runner-error.txt', `${error.stack || error.message}`);
+  await fs.writeFile('screenshots/amazon-links.json', JSON.stringify([{ fatalError: error.message }], null, 2));
   process.exitCode = 0;
 });
