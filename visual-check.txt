@@ -1,1 +1,2 @@
 Trigger a rendered visual check of https://hayfam.co.uk/
+Homepage spacing verification 2026-07-21T06:20:00Z
