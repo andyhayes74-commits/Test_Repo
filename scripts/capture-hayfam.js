@@ -20,15 +20,16 @@ const viewports = [
 async function loadWholePage(page) {
   await page.evaluate(async () => {
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    document.documentElement.style.scrollBehavior = 'auto';
     const step = Math.max(320, Math.floor(innerHeight * 0.72));
     for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
-      scrollTo(0, y);
+      window.scrollTo(0, y);
       await delay(90);
     }
-    scrollTo(0, document.documentElement.scrollHeight);
+    window.scrollTo(0, document.documentElement.scrollHeight);
     await delay(400);
-    scrollTo(0, 0);
-    await delay(300);
+    window.scrollTo(0, 0);
+    await delay(500);
   });
 }
 
