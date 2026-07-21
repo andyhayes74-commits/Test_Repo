@@ -1,4 +1,4 @@
-// Verification pass after readers-form and contact-email corrections
+// Verification pass including the social signup landing page
 const { chromium } = require('playwright');
 const fs = require('fs/promises');
 
@@ -9,6 +9,7 @@ const pages = [
   { name: 'better-world', url: 'https://hayfam.co.uk/the-better-world-series/' },
   { name: 'about', url: 'https://hayfam.co.uk/about-hayfam-books/' },
   { name: 'readers', url: 'https://hayfam.co.uk/join-the-readers-list/' },
+  { name: 'signup', url: 'https://hayfam.co.uk/signup/' },
   { name: 'contact', url: 'https://hayfam.co.uk/contact-hayfam-books/' },
   { name: 'privacy', url: 'https://hayfam.co.uk/privacy-notice/' }
 ];
