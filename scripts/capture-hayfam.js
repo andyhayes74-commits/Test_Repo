@@ -3,7 +3,13 @@ const fs = require('fs/promises');
 
 const pages = [
   { name: 'home', url: 'https://hayfam.co.uk/' },
-  { name: 'books', url: 'https://hayfam.co.uk/books/' }
+  { name: 'books', url: 'https://hayfam.co.uk/books/' },
+  { name: 'society', url: 'https://hayfam.co.uk/the-society-of-temporal-studies/' },
+  { name: 'better-world', url: 'https://hayfam.co.uk/the-better-world-series/' },
+  { name: 'about', url: 'https://hayfam.co.uk/about-hayfam-books/' },
+  { name: 'readers', url: 'https://hayfam.co.uk/join-the-readers-list/' },
+  { name: 'contact', url: 'https://hayfam.co.uk/contact-hayfam-books/' },
+  { name: 'privacy', url: 'https://hayfam.co.uk/privacy-notice/' }
 ];
 
 const viewports = [
@@ -13,8 +19,8 @@ const viewports = [
 
 async function capture() {
   await fs.mkdir('screenshots', { recursive: true });
-
   const browser = await chromium.launch({ headless: true });
+  const audit = [];
 
   try {
     for (const viewport of viewports) {
@@ -30,10 +36,16 @@ async function capture() {
 
       for (const target of pages) {
         const page = await context.newPage();
+        const consoleErrors = [];
+        page.on('console', (message) => {
+          if (message.type() === 'error') consoleErrors.push(message.text());
+        });
+        page.on('pageerror', (error) => consoleErrors.push(error.message));
+
         const separator = target.url.includes('?') ? '&' : '?';
         const url = `${target.url}${separator}visual-check=${Date.now()}`;
-
         console.log(`Capturing ${target.name} at ${viewport.name}: ${url}`);
+
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
         await page.waitForTimeout(5000);
         await page.evaluate(async () => {
@@ -41,48 +53,55 @@ async function capture() {
         });
         await page.waitForTimeout(1500);
 
-        if (target.name === 'home' && viewport.name === 'mobile') {
-          const layout = await page.evaluate(() => {
-            const snapshot = (element) => {
-              if (!element) return null;
-              const rect = element.getBoundingClientRect();
-              const style = getComputedStyle(element);
-              return {
-                tag: element.tagName,
-                className: element.className,
-                rect: {
-                  x: Math.round(rect.x),
-                  y: Math.round(rect.y),
-                  width: Math.round(rect.width),
-                  height: Math.round(rect.height)
-                },
-                display: style.display,
-                position: style.position,
-                width: style.width,
-                height: style.height,
-                minHeight: style.minHeight,
-                gridTemplateColumns: style.gridTemplateColumns,
-                gridColumn: style.gridColumn,
-                flex: style.flex,
-                alignSelf: style.alignSelf,
-                padding: style.padding,
-                margin: style.margin
-              };
-            };
+        const pageAudit = await page.evaluate(() => {
+          const visible = (element) => {
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+          };
 
-            return {
-              viewport: { width: innerWidth, height: innerHeight },
-              grid: snapshot(document.querySelector('.hf-publication-grid')),
-              cards: Array.from(document.querySelectorAll('.hf-publication-card')).map((card) => ({
-                card: snapshot(card),
-                cover: snapshot(card.querySelector('.hf-publication-card__cover')),
-                image: snapshot(card.querySelector('.hf-publication-card__cover img')),
-                copy: snapshot(card.querySelector('.hf-publication-card__copy'))
-              }))
-            };
-          });
-          await fs.writeFile('screenshots/home-mobile-layout.json', JSON.stringify(layout, null, 2));
-        }
+          const overflowing = Array.from(document.querySelectorAll('body *'))
+            .filter(visible)
+            .map((element) => {
+              const rect = element.getBoundingClientRect();
+              return {
+                tag: element.tagName.toLowerCase(),
+                className: typeof element.className === 'string' ? element.className : '',
+                left: Math.round(rect.left),
+                right: Math.round(rect.right),
+                width: Math.round(rect.width)
+              };
+            })
+            .filter((item) => item.left < -2 || item.right > innerWidth + 2)
+            .slice(0, 20);
+
+          const missingImages = Array.from(document.images)
+            .filter((image) => !image.complete || image.naturalWidth === 0)
+            .map((image) => ({ src: image.currentSrc || image.src, alt: image.alt }));
+
+          return {
+            title: document.title,
+            url: location.href,
+            statusText: document.body.innerText.trim().slice(0, 120),
+            viewport: { width: innerWidth, height: innerHeight },
+            document: {
+              clientWidth: document.documentElement.clientWidth,
+              scrollWidth: document.documentElement.scrollWidth,
+              scrollHeight: document.documentElement.scrollHeight
+            },
+            h1Count: document.querySelectorAll('h1').length,
+            navCount: document.querySelectorAll('nav').length,
+            missingImages,
+            overflowing
+          };
+        });
+
+        audit.push({
+          page: target.name,
+          viewport: viewport.name,
+          consoleErrors,
+          ...pageAudit
+        });
 
         await page.screenshot({
           path: `screenshots/${target.name}-${viewport.name}-top.png`,
@@ -96,10 +115,10 @@ async function capture() {
 
         await page.close();
       }
-
       await context.close();
     }
   } finally {
+    await fs.writeFile('screenshots/site-audit.json', JSON.stringify(audit, null, 2));
     await browser.close();
   }
 }
