@@ -1,4 +1,4 @@
-// Audit rebuilt Hayfam Books website, 21 July 2026
+// Final audit rebuilt Hayfam Books website after removing Kadence shell, 21 July 2026
 const { chromium } = require('playwright');
 const fs = require('fs/promises');
 
@@ -70,7 +70,9 @@ async function capture() {
             headingFont: h1 ? getComputedStyle(h1).fontFamily : null,
             missingImages,
             overflowing,
-            primaryActions
+            primaryActions,
+            themeHeaderVisible: !![...document.querySelectorAll('#masthead,.site-header')].find(visible),
+            themeFooterVisible: !![...document.querySelectorAll('#colophon,.site-footer')].find(visible)
           };
         });
         audit.push({ page: target.name, viewportName: viewport.name, consoleErrors, ...pageAudit });
