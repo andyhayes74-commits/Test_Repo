@@ -41,6 +41,49 @@ async function capture() {
         });
         await page.waitForTimeout(1500);
 
+        if (target.name === 'home' && viewport.name === 'mobile') {
+          const layout = await page.evaluate(() => {
+            const snapshot = (element) => {
+              if (!element) return null;
+              const rect = element.getBoundingClientRect();
+              const style = getComputedStyle(element);
+              return {
+                tag: element.tagName,
+                className: element.className,
+                rect: {
+                  x: Math.round(rect.x),
+                  y: Math.round(rect.y),
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height)
+                },
+                display: style.display,
+                position: style.position,
+                width: style.width,
+                height: style.height,
+                minHeight: style.minHeight,
+                gridTemplateColumns: style.gridTemplateColumns,
+                gridColumn: style.gridColumn,
+                flex: style.flex,
+                alignSelf: style.alignSelf,
+                padding: style.padding,
+                margin: style.margin
+              };
+            };
+
+            return {
+              viewport: { width: innerWidth, height: innerHeight },
+              grid: snapshot(document.querySelector('.hf-publication-grid')),
+              cards: Array.from(document.querySelectorAll('.hf-publication-card')).map((card) => ({
+                card: snapshot(card),
+                cover: snapshot(card.querySelector('.hf-publication-card__cover')),
+                image: snapshot(card.querySelector('.hf-publication-card__cover img')),
+                copy: snapshot(card.querySelector('.hf-publication-card__copy'))
+              }))
+            };
+          });
+          await fs.writeFile('screenshots/home-mobile-layout.json', JSON.stringify(layout, null, 2));
+        }
+
         await page.screenshot({
           path: `screenshots/${target.name}-${viewport.name}-top.png`,
           fullPage: false
