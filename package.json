@@ -1,0 +1,12 @@
+{
+  "name": "hayfam-site-preview",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automated visual captures of hayfam.co.uk",
+  "scripts": {
+    "capture": "node scripts/capture-hayfam.js"
+  },
+  "dependencies": {
+    "playwright": "^1.54.1"
+  }
+}
