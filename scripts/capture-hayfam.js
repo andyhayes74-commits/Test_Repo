@@ -120,11 +120,10 @@ async function capture() {
               ids: [...document.querySelectorAll('[id]')].map(el => el.id),
               overflow,
               scrollWidth: document.documentElement.scrollWidth,
-              clientWidth: document.documentElement.clientWidth,
-              consoleErrors
+              clientWidth: document.documentElement.clientWidth
             };
           });
-          audit.push({ page: target.name, viewport: viewport.name, ...result });
+          audit.push({ page: target.name, viewport: viewport.name, ...result, consoleErrors });
           await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-top.png`, fullPage: false });
           await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-full.png`, fullPage: true });
         } catch (error) {
