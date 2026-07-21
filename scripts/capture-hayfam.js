@@ -1,4 +1,4 @@
-// Verification pass including the social signup landing page
+// Hayfam Books brand alignment audit, 21 July 2026
 const { chromium } = require('playwright');
 const fs = require('fs/promises');
 
@@ -97,6 +97,10 @@ async function capture() {
             .filter((image) => !image.complete || image.naturalWidth === 0)
             .map((image) => ({ src: image.currentSrc || image.src, alt: image.alt }));
 
+          const root = getComputedStyle(document.documentElement);
+          const mainHeading = document.querySelector('h1');
+          const bodySample = document.querySelector('.hayfam-page p, .hf-signup-page p');
+
           return {
             title: document.title,
             url: location.href,
@@ -109,6 +113,15 @@ async function capture() {
             },
             h1Count: document.querySelectorAll('h1').length,
             navCount: document.querySelectorAll('nav').length,
+            headingFont: mainHeading ? getComputedStyle(mainHeading).fontFamily : null,
+            bodyFont: bodySample ? getComputedStyle(bodySample).fontFamily : null,
+            brandColours: {
+              paper: root.getPropertyValue('--hf-paper').trim(),
+              aged: root.getPropertyValue('--hf-aged').trim(),
+              cream: root.getPropertyValue('--hf-cream').trim(),
+              green: root.getPropertyValue('--hf-green').trim(),
+              red: root.getPropertyValue('--hf-red').trim()
+            },
             missingImages,
             overflowing
           };
