@@ -33,26 +33,11 @@ async function loadWholePage(page) {
   });
 }
 
-function normaliseUrl(href, base) {
-  try { return new URL(href, base).href; } catch { return href; }
-}
-
-async function checkLink(request, href) {
-  if (!href || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return { skipped: true };
-  try {
-    const res = await request.get(href, { timeout: 25000, maxRedirects: 10, failOnStatusCode: false });
-    return { status: res.status(), finalUrl: res.url(), ok: res.ok() };
-  } catch (error) {
-    return { status: null, ok: false, error: error.message };
-  }
-}
-
 async function capture() {
   await fs.rm('screenshots', { recursive: true, force: true });
   await fs.mkdir('screenshots', { recursive: true });
   const browser = await chromium.launch({ headless: true });
   const audit = [];
-  const uniqueLinks = new Map();
   try {
     for (const viewport of viewports) {
       const context = await browser.newContext({
@@ -76,7 +61,6 @@ async function capture() {
             const s = getComputedStyle(el), r = el.getBoundingClientRect();
             return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity || 1) > 0 && r.width > 0 && r.height > 0;
           };
-          const structural = 'main,header,footer,section,nav,article,aside,div';
           const links = [...document.querySelectorAll('a[href]')].map(a => {
             const r = a.getBoundingClientRect();
             return {
@@ -99,15 +83,11 @@ async function capture() {
           const emptyParagraphs = [...document.querySelectorAll('p')].filter(p => !p.textContent.trim() && !p.querySelector('img,iframe,input,button')).length;
           const strayBreaks = [...document.querySelectorAll('br')].filter(br => {
             const parent = br.parentElement;
-            return parent && (parent.matches(structural) || br.previousElementSibling?.matches(structural) || br.nextElementSibling?.matches(structural));
+            return parent && (parent.matches('main,header,footer,section,nav,article,aside,div') || br.previousElementSibling?.matches('main,header,footer,section,nav,article,aside,div') || br.nextElementSibling?.matches('main,header,footer,section,nav,article,aside,div'));
           }).length;
           const hiddenThemeNodes = [...document.querySelectorAll('#masthead,#colophon,.site-header,.site-footer')].map(el => ({ tag: el.tagName.toLowerCase(), id: el.id, className: typeof el.className === 'string' ? el.className : '', visible: visible(el), ariaHidden: el.getAttribute('aria-hidden'), linkCount: el.querySelectorAll('a').length }));
           const ctas = links.filter(l => /pre-order|preorder|buy on amazon|join newsletter|join the newsletter|join arc|arc team|read an excerpt|sample chapter/i.test(l.text));
-          const missingAlt = [...document.images].filter(img => !img.hasAttribute('alt')).map(img => img.currentSrc || img.src);
-          const emptyAlt = [...document.images].filter(img => img.getAttribute('alt') === '' && !img.closest('[aria-hidden="true"]')).map(img => img.currentSrc || img.src);
-          const main = document.querySelector('main');
           return {
-            url: location.href,
             title: document.title,
             htmlLang: document.documentElement.lang,
             metaDescription: document.querySelector('meta[name="description"]')?.content || null,
@@ -120,7 +100,7 @@ async function capture() {
             },
             mainCount: document.querySelectorAll('main').length,
             nestedMainCount: document.querySelectorAll('main main').length,
-            bodyMainDirect: main ? main.parentElement === document.body : false,
+            bodyMainDirect: document.querySelector('main')?.parentElement === document.body,
             headerCount: document.querySelectorAll('header').length,
             footerCount: document.querySelectorAll('footer').length,
             navCount: document.querySelectorAll('nav').length,
@@ -131,8 +111,8 @@ async function capture() {
             emptyParagraphs,
             strayBreaks,
             hiddenThemeNodes,
-            missingAlt,
-            emptyAlt,
+            missingAlt: [...document.images].filter(img => !img.hasAttribute('alt')).map(img => img.currentSrc || img.src),
+            emptyAlt: [...document.images].filter(img => img.getAttribute('alt') === '' && !img.closest('[aria-hidden="true"]')).map(img => img.currentSrc || img.src),
             forms: [...document.querySelectorAll('form')].map(f => ({ id: f.id, action: f.action, ariaLabel: f.getAttribute('aria-label'), visible: visible(f) })),
             ids: [...document.querySelectorAll('[id]')].map(el => el.id),
             overflow,
@@ -142,29 +122,13 @@ async function capture() {
           };
         });
         audit.push({ page: target.name, viewport: viewport.name, ...result });
-        for (const link of result.links) {
-          const href = normaliseUrl(link.href, target.url).split('#')[0];
-          if (href && !uniqueLinks.has(href)) uniqueLinks.set(href, { href, texts: new Set(), pages: new Set() });
-          if (href) {
-            uniqueLinks.get(href).texts.add(link.text);
-            uniqueLinks.get(href).pages.add(target.name);
-          }
-        }
         await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-top.png`, fullPage: false });
         await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-full.png`, fullPage: true });
         await page.close();
       }
       await context.close();
     }
-
-    const requestContext = await browser.newContext();
-    const linkResults = [];
-    for (const item of uniqueLinks.values()) {
-      const check = await checkLink(requestContext.request, item.href);
-      linkResults.push({ href: item.href, texts: [...item.texts], pages: [...item.pages], ...check });
-    }
-    await requestContext.close();
-    await fs.writeFile('screenshots/site-audit.json', JSON.stringify({ pages: audit, links: linkResults }, null, 2));
+    await fs.writeFile('screenshots/site-audit.json', JSON.stringify({ pages: audit }, null, 2));
   } finally {
     await browser.close();
   }
