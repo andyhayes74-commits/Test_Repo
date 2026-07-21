@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths-ignore:
       - 'screenshots/**'
+  pull_request:
+    branches: [main]
   schedule:
     - cron: '17 5 * * *'
 
@@ -43,6 +45,7 @@ jobs:
           retention-days: 14
 
       - name: Commit current screenshots
+        if: github.event_name != 'pull_request'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
