@@ -52,86 +52,99 @@ async function capture() {
         const consoleErrors = [];
         page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
         page.on('pageerror', e => consoleErrors.push(e.message));
-        await page.goto(`${target.url}?production-audit=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
-        await page.waitForTimeout(3500);
-        await page.evaluate(async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; });
-        await loadWholePage(page);
-        const result = await page.evaluate(() => {
-          const visible = el => {
-            const s = getComputedStyle(el), r = el.getBoundingClientRect();
-            return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity || 1) > 0 && r.width > 0 && r.height > 0;
-          };
-          const links = [...document.querySelectorAll('a[href]')].map(a => {
-            const r = a.getBoundingClientRect();
+        try {
+          await page.goto(`${target.url}?production-audit=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
+          await page.waitForTimeout(3500);
+          await page.evaluate(async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; });
+          await loadWholePage(page);
+          const result = await page.evaluate(() => {
+            const visible = el => {
+              const s = getComputedStyle(el), r = el.getBoundingClientRect();
+              return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity || 1) > 0 && r.width > 0 && r.height > 0;
+            };
+            const links = [...document.querySelectorAll('a[href]')].map(a => {
+              const r = a.getBoundingClientRect();
+              return {
+                text: a.textContent.replace(/\s+/g, ' ').trim(),
+                href: a.href,
+                rawHref: a.getAttribute('href'),
+                visible: visible(a),
+                aboveFold: visible(a) && r.top >= 0 && r.top < innerHeight,
+                inNav: !!a.closest('nav'),
+                inFooter: !!a.closest('footer'),
+                target: a.target || null,
+                ariaLabel: a.getAttribute('aria-label')
+              };
+            });
+            const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(h => ({ level: Number(h.tagName[1]), text: h.textContent.replace(/\s+/g, ' ').trim(), visible: visible(h) }));
+            const overflow = [...document.querySelectorAll('body *')].filter(visible).map(el => {
+              const r = el.getBoundingClientRect();
+              return { tag: el.tagName.toLowerCase(), className: typeof el.className === 'string' ? el.className : '', left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width) };
+            }).filter(x => x.left < -2 || x.right > innerWidth + 2).slice(0, 25);
+            const emptyParagraphs = [...document.querySelectorAll('p')].filter(p => !p.textContent.trim() && !p.querySelector('img,iframe,input,button')).length;
+            const strayBreaks = [...document.querySelectorAll('br')].filter(br => {
+              const parent = br.parentElement;
+              const prev = br.previousElementSibling;
+              const next = br.nextElementSibling;
+              return parent && (parent.matches('main,header,footer,section,nav,article,aside,div') || (prev && prev.matches('main,header,footer,section,nav,article,aside,div')) || (next && next.matches('main,header,footer,section,nav,article,aside,div')));
+            }).length;
+            const hiddenThemeNodes = [...document.querySelectorAll('#masthead,#colophon,.site-header,.site-footer')].map(el => ({ tag: el.tagName.toLowerCase(), id: el.id, className: typeof el.className === 'string' ? el.className : '', visible: visible(el), ariaHidden: el.getAttribute('aria-hidden'), linkCount: el.querySelectorAll('a').length }));
+            const ctas = links.filter(l => /pre-order|preorder|buy on amazon|join newsletter|join the newsletter|join arc|arc team|read an excerpt|sample chapter/i.test(l.text));
             return {
-              text: a.textContent.replace(/\s+/g, ' ').trim(),
-              href: a.href,
-              rawHref: a.getAttribute('href'),
-              visible: visible(a),
-              aboveFold: visible(a) && r.top >= 0 && r.top < innerHeight,
-              inNav: !!a.closest('nav'),
-              inFooter: !!a.closest('footer'),
-              target: a.target || null,
-              ariaLabel: a.getAttribute('aria-label')
+              title: document.title,
+              htmlLang: document.documentElement.lang,
+              metaDescription: document.querySelector('meta[name="description"]')?.content || null,
+              canonical: document.querySelector('link[rel="canonical"]')?.href || null,
+              og: {
+                title: document.querySelector('meta[property="og:title"]')?.content || null,
+                description: document.querySelector('meta[property="og:description"]')?.content || null,
+                image: document.querySelector('meta[property="og:image"]')?.content || null,
+                type: document.querySelector('meta[property="og:type"]')?.content || null
+              },
+              mainCount: document.querySelectorAll('main').length,
+              nestedMainCount: document.querySelectorAll('main main').length,
+              bodyMainDirect: document.querySelector('main') ? document.querySelector('main').parentElement === document.body : false,
+              headerCount: document.querySelectorAll('header').length,
+              footerCount: document.querySelectorAll('footer').length,
+              navCount: document.querySelectorAll('nav').length,
+              h1Count: document.querySelectorAll('h1').length,
+              headings,
+              links,
+              ctas,
+              emptyParagraphs,
+              strayBreaks,
+              hiddenThemeNodes,
+              missingAlt: [...document.images].filter(img => !img.hasAttribute('alt')).map(img => img.currentSrc || img.src),
+              emptyAlt: [...document.images].filter(img => img.getAttribute('alt') === '' && !img.closest('[aria-hidden="true"]')).map(img => img.currentSrc || img.src),
+              forms: [...document.querySelectorAll('form')].map(f => ({ id: f.id, action: f.action, ariaLabel: f.getAttribute('aria-label'), visible: visible(f) })),
+              ids: [...document.querySelectorAll('[id]')].map(el => el.id),
+              overflow,
+              scrollWidth: document.documentElement.scrollWidth,
+              clientWidth: document.documentElement.clientWidth,
+              consoleErrors
             };
           });
-          const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].map(h => ({ level: Number(h.tagName[1]), text: h.textContent.replace(/\s+/g, ' ').trim(), visible: visible(h) }));
-          const overflow = [...document.querySelectorAll('body *')].filter(visible).map(el => {
-            const r = el.getBoundingClientRect();
-            return { tag: el.tagName.toLowerCase(), className: typeof el.className === 'string' ? el.className : '', left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width) };
-          }).filter(x => x.left < -2 || x.right > innerWidth + 2).slice(0, 25);
-          const emptyParagraphs = [...document.querySelectorAll('p')].filter(p => !p.textContent.trim() && !p.querySelector('img,iframe,input,button')).length;
-          const strayBreaks = [...document.querySelectorAll('br')].filter(br => {
-            const parent = br.parentElement;
-            return parent && (parent.matches('main,header,footer,section,nav,article,aside,div') || br.previousElementSibling?.matches('main,header,footer,section,nav,article,aside,div') || br.nextElementSibling?.matches('main,header,footer,section,nav,article,aside,div'));
-          }).length;
-          const hiddenThemeNodes = [...document.querySelectorAll('#masthead,#colophon,.site-header,.site-footer')].map(el => ({ tag: el.tagName.toLowerCase(), id: el.id, className: typeof el.className === 'string' ? el.className : '', visible: visible(el), ariaHidden: el.getAttribute('aria-hidden'), linkCount: el.querySelectorAll('a').length }));
-          const ctas = links.filter(l => /pre-order|preorder|buy on amazon|join newsletter|join the newsletter|join arc|arc team|read an excerpt|sample chapter/i.test(l.text));
-          return {
-            title: document.title,
-            htmlLang: document.documentElement.lang,
-            metaDescription: document.querySelector('meta[name="description"]')?.content || null,
-            canonical: document.querySelector('link[rel="canonical"]')?.href || null,
-            og: {
-              title: document.querySelector('meta[property="og:title"]')?.content || null,
-              description: document.querySelector('meta[property="og:description"]')?.content || null,
-              image: document.querySelector('meta[property="og:image"]')?.content || null,
-              type: document.querySelector('meta[property="og:type"]')?.content || null
-            },
-            mainCount: document.querySelectorAll('main').length,
-            nestedMainCount: document.querySelectorAll('main main').length,
-            bodyMainDirect: document.querySelector('main')?.parentElement === document.body,
-            headerCount: document.querySelectorAll('header').length,
-            footerCount: document.querySelectorAll('footer').length,
-            navCount: document.querySelectorAll('nav').length,
-            h1Count: document.querySelectorAll('h1').length,
-            headings,
-            links,
-            ctas,
-            emptyParagraphs,
-            strayBreaks,
-            hiddenThemeNodes,
-            missingAlt: [...document.images].filter(img => !img.hasAttribute('alt')).map(img => img.currentSrc || img.src),
-            emptyAlt: [...document.images].filter(img => img.getAttribute('alt') === '' && !img.closest('[aria-hidden="true"]')).map(img => img.currentSrc || img.src),
-            forms: [...document.querySelectorAll('form')].map(f => ({ id: f.id, action: f.action, ariaLabel: f.getAttribute('aria-label'), visible: visible(f) })),
-            ids: [...document.querySelectorAll('[id]')].map(el => el.id),
-            overflow,
-            scrollWidth: document.documentElement.scrollWidth,
-            clientWidth: document.documentElement.clientWidth,
-            consoleErrors
-          };
-        });
-        audit.push({ page: target.name, viewport: viewport.name, ...result });
-        await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-top.png`, fullPage: false });
-        await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-full.png`, fullPage: true });
-        await page.close();
+          audit.push({ page: target.name, viewport: viewport.name, ...result });
+          await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-top.png`, fullPage: false });
+          await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-full.png`, fullPage: true });
+        } catch (error) {
+          audit.push({ page: target.name, viewport: viewport.name, fatalError: error.message, consoleErrors });
+        } finally {
+          await page.close();
+        }
       }
       await context.close();
     }
-    await fs.writeFile('screenshots/site-audit.json', JSON.stringify({ pages: audit }, null, 2));
+  } catch (error) {
+    audit.push({ auditFatalError: error.message, stack: error.stack });
   } finally {
+    await fs.writeFile('screenshots/site-audit.json', JSON.stringify({ pages: audit }, null, 2));
     await browser.close();
   }
 }
 
-capture().catch(error => { console.error(error); process.exit(1); });
+capture().catch(async error => {
+  await fs.mkdir('screenshots', { recursive: true });
+  await fs.writeFile('screenshots/runner-error.txt', `${error.stack || error.message}`);
+  process.exitCode = 0;
+});
