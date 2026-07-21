@@ -17,6 +17,21 @@ const viewports = [
   { name: 'mobile', width: 412, height: 915, mobile: true }
 ];
 
+async function loadWholePage(page) {
+  await page.evaluate(async () => {
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const step = Math.max(320, Math.floor(innerHeight * 0.72));
+    for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+      scrollTo(0, y);
+      await delay(90);
+    }
+    scrollTo(0, document.documentElement.scrollHeight);
+    await delay(400);
+    scrollTo(0, 0);
+    await delay(300);
+  });
+}
+
 async function capture() {
   await fs.mkdir('screenshots', { recursive: true });
   const browser = await chromium.launch({ headless: true });
@@ -47,11 +62,11 @@ async function capture() {
         console.log(`Capturing ${target.name} at ${viewport.name}: ${url}`);
 
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(4500);
         await page.evaluate(async () => {
           if (document.fonts && document.fonts.ready) await document.fonts.ready;
         });
-        await page.waitForTimeout(1500);
+        await loadWholePage(page);
 
         const pageAudit = await page.evaluate(() => {
           const visible = (element) => {
