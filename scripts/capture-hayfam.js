@@ -1,4 +1,4 @@
-// Hayfam Books brand alignment audit, 21 July 2026
+// Final Hayfam Books brand verification, 21 July 2026
 const { chromium } = require('playwright');
 const fs = require('fs/promises');
 
@@ -138,12 +138,10 @@ async function capture() {
           path: `screenshots/${target.name}-${viewport.name}-top.png`,
           fullPage: false
         });
-
         await page.screenshot({
           path: `screenshots/${target.name}-${viewport.name}-full.png`,
           fullPage: true
         });
-
         await page.close();
       }
       await context.close();
