@@ -1,3 +1,4 @@
+// Verification pass after readers-form and contact-email corrections
 const { chromium } = require('playwright');
 const fs = require('fs/promises');
 
