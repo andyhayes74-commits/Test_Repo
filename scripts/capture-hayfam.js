@@ -1,4 +1,4 @@
-// Verify generated Hayfam Books imagery, 21 July 2026
+// Verify live Hayfam Books generated imagery, 21 July 2026
 const { chromium } = require('playwright');
 const fs = require('fs/promises');
 
