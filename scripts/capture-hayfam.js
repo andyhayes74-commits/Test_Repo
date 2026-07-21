@@ -1,17 +1,11 @@
-// Final Hayfam Books brand verification, 21 July 2026
+// Final focused Hayfam Books visual verification, 21 July 2026
 const { chromium } = require('playwright');
 const fs = require('fs/promises');
 
 const pages = [
   { name: 'home', url: 'https://hayfam.co.uk/' },
-  { name: 'books', url: 'https://hayfam.co.uk/books/' },
-  { name: 'society', url: 'https://hayfam.co.uk/the-society-of-temporal-studies/' },
-  { name: 'better-world', url: 'https://hayfam.co.uk/the-better-world-series/' },
   { name: 'about', url: 'https://hayfam.co.uk/about-hayfam-books/' },
-  { name: 'readers', url: 'https://hayfam.co.uk/join-the-readers-list/' },
-  { name: 'signup', url: 'https://hayfam.co.uk/signup/' },
-  { name: 'contact', url: 'https://hayfam.co.uk/contact-hayfam-books/' },
-  { name: 'privacy', url: 'https://hayfam.co.uk/privacy-notice/' }
+  { name: 'contact', url: 'https://hayfam.co.uk/contact-hayfam-books/' }
 ];
 
 const viewports = [
@@ -39,7 +33,6 @@ async function capture() {
   await fs.mkdir('screenshots', { recursive: true });
   const browser = await chromium.launch({ headless: true });
   const audit = [];
-
   try {
     for (const viewport of viewports) {
       const context = await browser.newContext({
@@ -51,97 +44,46 @@ async function capture() {
           ? 'Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 Chrome/138.0.0.0 Mobile Safari/537.36'
           : undefined
       });
-
       for (const target of pages) {
         const page = await context.newPage();
         const consoleErrors = [];
-        page.on('console', (message) => {
-          if (message.type() === 'error') consoleErrors.push(message.text());
-        });
+        page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
         page.on('pageerror', (error) => consoleErrors.push(error.message));
-
-        const separator = target.url.includes('?') ? '&' : '?';
-        const url = `${target.url}${separator}visual-check=${Date.now()}`;
-        console.log(`Capturing ${target.name} at ${viewport.name}: ${url}`);
-
+        const url = `${target.url}?visual-check=${Date.now()}`;
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
         await page.waitForTimeout(4500);
-        await page.evaluate(async () => {
-          if (document.fonts && document.fonts.ready) await document.fonts.ready;
-        });
+        await page.evaluate(async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; });
         await loadWholePage(page);
-
         const pageAudit = await page.evaluate(() => {
           const visible = (element) => {
             const style = getComputedStyle(element);
             const rect = element.getBoundingClientRect();
             return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
           };
-
           const overflowing = Array.from(document.querySelectorAll('body *'))
             .filter(visible)
             .map((element) => {
               const rect = element.getBoundingClientRect();
-              return {
-                tag: element.tagName.toLowerCase(),
-                className: typeof element.className === 'string' ? element.className : '',
-                left: Math.round(rect.left),
-                right: Math.round(rect.right),
-                width: Math.round(rect.width)
-              };
+              return { tag: element.tagName.toLowerCase(), className: typeof element.className === 'string' ? element.className : '', left: Math.round(rect.left), right: Math.round(rect.right), width: Math.round(rect.width) };
             })
             .filter((item) => item.left < -2 || item.right > innerWidth + 2)
             .slice(0, 20);
-
           const missingImages = Array.from(document.images)
             .filter((image) => !image.complete || image.naturalWidth === 0)
             .map((image) => ({ src: image.currentSrc || image.src, alt: image.alt }));
-
-          const root = getComputedStyle(document.documentElement);
           const mainHeading = document.querySelector('h1');
-          const bodySample = document.querySelector('.hayfam-page p, .hf-signup-page p');
-
           return {
-            title: document.title,
-            url: location.href,
-            statusText: document.body.innerText.trim().slice(0, 120),
             viewport: { width: innerWidth, height: innerHeight },
-            document: {
-              clientWidth: document.documentElement.clientWidth,
-              scrollWidth: document.documentElement.scrollWidth,
-              scrollHeight: document.documentElement.scrollHeight
-            },
+            document: { clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight },
             h1Count: document.querySelectorAll('h1').length,
-            navCount: document.querySelectorAll('nav').length,
             headingFont: mainHeading ? getComputedStyle(mainHeading).fontFamily : null,
-            bodyFont: bodySample ? getComputedStyle(bodySample).fontFamily : null,
-            brandColours: {
-              paper: root.getPropertyValue('--hf-paper').trim(),
-              aged: root.getPropertyValue('--hf-aged').trim(),
-              cream: root.getPropertyValue('--hf-cream').trim(),
-              green: root.getPropertyValue('--hf-green').trim(),
-              red: root.getPropertyValue('--hf-red').trim()
-            },
             missingImages,
             overflowing
           };
         });
-
-        audit.push({
-          page: target.name,
-          viewport: viewport.name,
-          consoleErrors,
-          ...pageAudit
-        });
-
-        await page.screenshot({
-          path: `screenshots/${target.name}-${viewport.name}-top.png`,
-          fullPage: false
-        });
-        await page.screenshot({
-          path: `screenshots/${target.name}-${viewport.name}-full.png`,
-          fullPage: true
-        });
+        audit.push({ page: target.name, viewportName: viewport.name, consoleErrors, ...pageAudit });
+        await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-top.png`, fullPage: false });
+        await page.screenshot({ path: `screenshots/${target.name}-${viewport.name}-full.png`, fullPage: true });
         await page.close();
       }
       await context.close();
@@ -152,7 +94,4 @@ async function capture() {
   }
 }
 
-capture().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+capture().catch((error) => { console.error(error); process.exit(1); });
