@@ -1,0 +1,1 @@
+Trigger final header consistency capture after CSS normalisation.
