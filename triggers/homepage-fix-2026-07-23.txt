@@ -1,0 +1,1 @@
+Capture homepage after screenshot-led CSS corrections.
