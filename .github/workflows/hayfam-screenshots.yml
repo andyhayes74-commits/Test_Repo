@@ -41,7 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hayfam-screenshots
-          path: screenshots/*.png
+          path: screenshots/*
           retention-days: 14
 
       - name: Commit current screenshots
